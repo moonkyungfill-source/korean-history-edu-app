@@ -70,7 +70,7 @@
 
 ```bash
 # 1. 클론
-git clone https://github.com/[username]/korean-history-app.git
+git clone https://github.com/moonkyungfill-source/korean-history-edu-app.git
 cd korean-history-app
 
 # 2. 의존성 설치
