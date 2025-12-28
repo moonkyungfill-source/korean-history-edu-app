@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return request.auth != null &&
+             request.auth.token.admin == true;
+    }
+
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isSizeValid() {
+      return request.resource.size <= 10 * 1024 * 1024; // 10MB
+    }
+
+    function isImageValid() {
+      return isValidImage() && isSizeValid();
+    }
+
+    // Student works directory: student-works/{userId}/{workId}/{allFiles=**}
+    // Rules: 인증된 사용자만 쓰기, 본인과 관리자만 읽기
+    match /student-works/{userId}/{workId}/{allFiles=**} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update, delete: if isAuthenticated() && isOwner(userId);
+    }
+
+    // Generations directory: generations/{userId}/{imageId}
+    // Rules: 본인만 쓰기, 모든 인증 사용자 읽기
+    match /generations/{userId}/{imageId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(userId) && isImageValid();
+      allow delete: if isOwner(userId);
+    }
+
+    // Thumbnails directory: thumbnails/{userId}/{imageId}
+    // Rules: 본인만 쓰기/삭제
+    match /thumbnails/{userId}/{imageId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isImageValid();
+      allow delete: if isOwner(userId);
+    }
+
+    // Feedback directory: feedback/{feedbackId}/{imageId}
+    // Rules: 관리자만 쓰기/읽기, 모든 인증자 읽기
+    match /feedback/{feedbackId}/{imageId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Error reports directory: error-reports/{reportId}/{imageId}
+    // Rules: 인증자 쓰기, 관리자 읽기
+    match /error-reports/{reportId}/{imageId} {
+      allow read: if isAdmin();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

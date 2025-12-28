@@ -1,0 +1,268 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ============================================================
+    // 헬퍼 함수 (Helper Functions)
+    // ISO/IEC/IEEE 29148-2018 보안 요구사항 준수
+    // ============================================================
+
+    // 인증 여부 확인
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 자신의 문서인지 확인
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // 관리자 역할 확인
+    function isAdmin() {
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // 활성 사용자 확인 (role이 존재하고 null이 아닌지)
+    function isActiveUser() {
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role != null;
+    }
+
+    // 학생 역할 확인
+    function isStudent() {
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    }
+
+    // ============================================================
+    // users 컬렉션 규칙
+    // 사용자 정보 (학년, 반, 학교 정보 포함)
+    // ============================================================
+    match /users/{userId} {
+      // 읽기: 본인 또는 관리자 (간단히: 로그인 사용자만 읽을 수 있음)
+      allow read: if isAuthenticated();
+
+      // 생성: 로그인 사용자는 자신의 프로필만 생성 가능
+      // 최소 검증: email과 createdAt만 확인
+      allow create: if isAuthenticated() &&
+                       isOwner(userId) &&
+                       request.resource.data.email is string &&
+                       request.resource.data.createdAt == request.time;
+
+      // 업데이트: 본인은 제한적, 관리자는 role 수정 가능
+      allow update: if (isOwner(userId) &&
+                        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdAt', 'email'])) ||
+                       (isAdmin() &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt']));
+
+      // 삭제: 본인 또는 관리자
+      allow delete: if isAdmin() || isOwner(userId);
+    }
+
+    // ============================================================
+    // generations 컬렉션 규칙
+    // 생성된 교육 자료 (이미지, 텍스트 등)
+    // ============================================================
+    match /generations/{generationId} {
+      // 읽기: 본인 또는 관리자
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+
+      // 생성: 인증된 활성 사용자
+      allow create: if isAuthenticated() &&
+                       isActiveUser() &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.createdAt == request.time &&
+                       validateGenerationDocument(request.resource.data);
+
+      // 업데이트: 본인은 제한적, 관리자는 status 수정 가능
+      allow update: if (isOwner(resource.data.userId) &&
+                         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['userId', 'createdAt', 'prompt'])) ||
+                       (isAdmin() &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'adminNotes', 'updatedAt']));
+
+      // 삭제: 관리자만
+      allow delete: if isAdmin();
+    }
+
+    // ============================================================
+    // feedback 컬렉션 규칙
+    // 피드백 정보
+    // ============================================================
+    match /feedback/{feedbackId} {
+      // 읽기: 학생 또는 관리자
+      allow read: if isStudent() || isAdmin();
+
+      // 생성: 관리자만
+      allow create: if isAdmin() &&
+                       request.resource.data.createdAt == request.time &&
+                       validateFeedbackDocument(request.resource.data);
+
+      // 업데이트: 학생은 isRead만 수정, 관리자는 전체 수정
+      allow update: if (isStudent() &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt'])) ||
+                       (isAdmin() &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt', 'content', 'status', 'updatedAt']));
+
+      // 삭제: 관리자만
+      allow delete: if isAdmin();
+    }
+
+    // ============================================================
+    // error-reports 컬렉션 규칙
+    // 오류 보고
+    // ============================================================
+    match /error-reports/{reportId} {
+      // 읽기: 관리자만
+      allow read: if isAdmin();
+
+      // 생성: 인증된 사용자
+      allow create: if isAuthenticated() &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.createdAt == request.time &&
+                       validateErrorReportDocument(request.resource.data);
+
+      // 업데이트: 관리자만 (상태 변경 등)
+      allow update: if isAdmin() &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt', 'adminNotes', 'updatedAt']);
+
+      // 삭제: 관리자만
+      allow delete: if isAdmin();
+    }
+
+    // ============================================================
+    // negative-prompts 컬렉션 규칙
+    // 부적절한 프롬프트 차단 목록
+    // ============================================================
+    match /negative-prompts/{promptId} {
+      // 읽기: 인증된 사용자
+      allow read: if isAuthenticated();
+
+      // 생성/업데이트/삭제: 관리자만
+      allow create: if isAdmin() &&
+                       request.resource.data.createdAt == request.time &&
+                       validateNegativePromptDocument(request.resource.data);
+
+      allow update: if isAdmin() &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['keyword', 'category', 'severity', 'updatedAt']);
+
+      allow delete: if isAdmin();
+    }
+
+    // ============================================================
+    // search-history 컬렉션 규칙
+    // 검색 이력
+    // ============================================================
+    match /search-history/{historyId} {
+      // 읽기: 본인 또는 관리자
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+
+      // 생성: 본인만 (자신의 이력만)
+      allow create: if isAuthenticated() &&
+                       isOwner(resource.data.userId) &&
+                       request.resource.data.createdAt == request.time &&
+                       validateSearchHistoryDocument(request.resource.data);
+
+      // 업데이트: 본인만
+      allow update: if isOwner(resource.data.userId) &&
+                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['userId', 'createdAt']);
+
+      // 삭제: 본인 또는 관리자
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // ============================================================
+    // settings 컬렉션 규칙
+    // API 키 및 시스템 설정
+    // ============================================================
+    match /settings/{settingId} {
+      // 읽기: 금지 (API 키가 클라이언트에 노출되지 않음)
+      // 필요시 서버 측 API 엔드포인트를 통해서만 접근 가능
+      allow read: if false;
+
+      // 생성/업데이트: 관리자만, updatedAt는 서버 타임스탬프 필수
+      allow create, update: if isAdmin() &&
+                              request.resource.data.updatedAt == request.time &&
+                              validateSettingsDocument(request.resource.data);
+
+      // 삭제: 금지 (설정은 삭제 불가)
+      allow delete: if false;
+    }
+
+    // ============================================================
+    // 문서 유효성 검사 함수
+    // ============================================================
+
+    // generations 문서 구조 검증
+    function validateGenerationDocument(data) {
+      return data.userId is string &&
+             data.prompt is string &&
+             data.createdAt is timestamp &&
+             (data.imageUrl is string || !('imageUrl' in data)) &&
+             (data.textContent is string || !('textContent' in data)) &&
+             (data.status is string || !('status' in data)) &&
+             (data.status in ['pending', 'completed', 'failed'] || !('status' in data)) &&
+             (data.generatedAt is timestamp || !('generatedAt' in data)) &&
+             (data.metadata is map || !('metadata' in data)) &&
+             (data.updatedAt is timestamp || !('updatedAt' in data));
+    }
+
+    // feedback 문서 구조 검증
+    function validateFeedbackDocument(data) {
+      return data.userId is string &&
+             data.generationId is string &&
+             data.content is string &&
+             data.createdAt is timestamp &&
+             (data.isRead is bool || !('isRead' in data)) &&
+             (data.readAt is timestamp || !('readAt' in data)) &&
+             (data.status is string || !('status' in data)) &&
+             (data.updatedAt is timestamp || !('updatedAt' in data));
+    }
+
+    // error-reports 문서 구조 검증
+    function validateErrorReportDocument(data) {
+      return data.userId is string &&
+             data.errorMessage is string &&
+             data.createdAt is timestamp &&
+             (data.stackTrace is string || !('stackTrace' in data)) &&
+             (data.context is map || !('context' in data)) &&
+             (data.status is string || !('status' in data)) &&
+             (data.status in ['open', 'in_progress', 'resolved'] || !('status' in data)) &&
+             (data.updatedAt is timestamp || !('updatedAt' in data));
+    }
+
+    // negative-prompts 문서 구조 검증
+    function validateNegativePromptDocument(data) {
+      return data.keyword is string &&
+             data.createdAt is timestamp &&
+             (data.category is string || !('category' in data)) &&
+             (data.severity is string || !('severity' in data)) &&
+             (data.severity in ['low', 'medium', 'high'] || !('severity' in data)) &&
+             (data.updatedAt is timestamp || !('updatedAt' in data));
+    }
+
+    // search-history 문서 구조 검증
+    function validateSearchHistoryDocument(data) {
+      return data.userId is string &&
+             data.query is string &&
+             data.createdAt is timestamp &&
+             (data.results is list || !('results' in data)) &&
+             (data.filters is map || !('filters' in data)) &&
+             (data.executionTime is int || !('executionTime' in data)) &&
+             (data.updatedAt is timestamp || !('updatedAt' in data));
+    }
+
+    // settings 문서 구조 검증
+    function validateSettingsDocument(data) {
+      return data.geminiApiKey is string &&
+             (data.searchApiKey is string || !('searchApiKey' in data)) &&
+             (data.searchEngineId is string || !('searchEngineId' in data)) &&
+             (data.usageCount is int || !('usageCount' in data)) &&
+             (data.lastUsedAt is timestamp || !('lastUsedAt' in data)) &&
+             (data.monthlyUsage is map || !('monthlyUsage' in data)) &&
+             (data.createdAt is timestamp || !('createdAt' in data)) &&
+             data.updatedAt is timestamp &&
+             (data.updatedBy is string || !('updatedBy' in data));
+    }
+  }
+}
