@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ERAS, ERA_ORDER } from '@/constants/eras';
 import { Era, SearchHistory } from '@/types';
 import { toast } from 'sonner';
-import { Sparkles, AlertCircle, Loader2, Download, Flag, Search, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { Sparkles, AlertCircle, Loader2, Download, Flag, Search, ExternalLink } from 'lucide-react';
 import { addGeneration, linkSearchHistoryToGeneration } from '@/lib/firebase/firestore';
 import { uploadImageBase64 } from '@/lib/firebase/storage';
 import { generateImage } from '@/lib/gemini/client';
@@ -114,13 +114,13 @@ export default function GeneratePage() {
           imageDataUrl
         );
 
-        // Firestore에 저장 (이미지는 Storage에만 저장)
+        // Firestore에 저장
         const docId = await addGeneration({
           userId: user.uid,
           userDisplayName: user.displayName,
           era: selectedEra,
           prompt,
-          negativePrompt: data.negativePrompt || '',
+          negativePrompt: '',
           imageUrl,
           status: 'pending',
           metadata: {

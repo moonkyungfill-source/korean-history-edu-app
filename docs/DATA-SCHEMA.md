@@ -53,8 +53,34 @@ firestore/
 | `school` | `string` | X | 소속 학교 (학생 필수) |
 | `grade` | `number` | X | 학년 (1-3, 학생 필수) |
 | `class` | `string` | X | 학급 (예: "1반", 학생 필수) |
+| `registrationStatus` | `RegistrationStatus` | O | 가입 승인 상태 (`pending` \| `approved` \| `rejected`) |
+| `approvedAt` | `Timestamp` | X | 승인 시간 (승인된 경우) |
+| `approvedBy` | `string` | X | 승인한 교사 UID (승인된 경우) |
+| `rejectionReason` | `string` | X | 거절 사유 (거절된 경우) |
 
-**예시 문서:**
+**RegistrationStatus 값:**
+- `pending`: 승인 대기 중 (학생이 가입 신청 후 교사 승인 전)
+- `approved`: 승인됨 (교사가 승인, 로그인 가능)
+- `rejected`: 거절됨 (교사가 거절, 로그인 불가)
+
+**예시 문서 (승인 대기 중):**
+```json
+{
+  "uid": "abc123def456",
+  "email": "student@school.edu",
+  "displayName": "홍길동",
+  "role": "student",
+  "createdAt": "2024-01-15T09:00:00Z",
+  "lastLoginAt": null,
+  "isActive": false,
+  "school": "서울중학교",
+  "grade": 2,
+  "class": "3반",
+  "registrationStatus": "pending"
+}
+```
+
+**예시 문서 (승인됨):**
 ```json
 {
   "uid": "abc123def456",
@@ -66,7 +92,10 @@ firestore/
   "isActive": true,
   "school": "서울중학교",
   "grade": 2,
-  "class": "3반"
+  "class": "3반",
+  "registrationStatus": "approved",
+  "approvedAt": "2024-01-16T10:00:00Z",
+  "approvedBy": "teacher_uid_123"
 }
 ```
 
@@ -286,6 +315,9 @@ export type Era = 'goryeo' | 'joseon-early' | 'joseon-mid' | 'joseon-late' | 'ja
 // 사용자 역할
 export type UserRole = 'student' | 'admin';
 
+// 가입 승인 상태
+export type RegistrationStatus = 'pending' | 'approved' | 'rejected';
+
 // 사용자 인터페이스
 export interface User {
   uid: string;
@@ -294,11 +326,16 @@ export interface User {
   photoURL?: string;
   role: UserRole;
   createdAt: Timestamp;
-  lastLoginAt: Timestamp;
+  lastLoginAt: Timestamp | null;
   isActive: boolean;
   school?: string;
   grade?: number;
   class?: string;
+  // 가입 승인 관련 필드
+  registrationStatus: RegistrationStatus;
+  approvedAt?: Timestamp;
+  approvedBy?: string;
+  rejectionReason?: string;
 }
 
 // 생성물 상태

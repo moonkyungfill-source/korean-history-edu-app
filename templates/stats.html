@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block title %}통계 - 국보 AI 이미지 생성{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-bar-chart me-2"></i>통계</h2>
+
+<div class="row">
+    <!-- 전체 현황 -->
+    <div class="col-md-6 col-lg-3 mb-4">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-collection display-4 text-primary"></i>
+                <h2 class="mt-2">{{ stats.total }}</h2>
+                <p class="text-muted mb-0">전체 국보</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-lg-3 mb-4">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-image display-4 text-success"></i>
+                <h2 class="mt-2">{{ stats.with_images }}</h2>
+                <p class="text-muted mb-0">이미지 생성 완료</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-lg-3 mb-4">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-camera-video display-4 text-info"></i>
+                <h2 class="mt-2">{{ stats.with_video_prompts }}</h2>
+                <p class="text-muted mb-0">영상 프롬프트 완료</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-lg-3 mb-4">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-percent display-4 text-warning"></i>
+                <h2 class="mt-2">{{ ((stats.with_images / stats.total) * 100) | round(1) }}%</h2>
+                <p class="text-muted mb-0">이미지 생성률</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 시대별 분포 -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">시대별 분포</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>시대</th><th>개수</th><th>비율</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for era, count in stats.by_era.items() | sort(attribute='1', reverse=true) %}
+                        <tr>
+                            <td>{{ era }}</td>
+                            <td>{{ count }}</td>
+                            <td>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar" style="width: {{ (count / stats.total * 100) | round(1) }}%">
+                                        {{ (count / stats.total * 100) | round(1) }}%
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 유형별 분포 -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">유형별 분포</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>유형</th><th>개수</th><th>비율</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for t, count in stats.by_type.items() | sort(attribute='1', reverse=true) %}
+                        <tr>
+                            <td>{{ t }}</td>
+                            <td>{{ count }}</td>
+                            <td>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar bg-success" style="width: {{ (count / stats.total * 100) | round(1) }}%">
+                                        {{ (count / stats.total * 100) | round(1) }}%
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Case별 이미지 생성 현황 -->
+<div class="card mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">Case별 이미지 생성 현황</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for case_num, count in stats.images_by_case.items() %}
+            <div class="col-md-6 mb-3">
+                <div class="card case-{{ case_num }}">
+                    <div class="card-body text-center">
+                        <h4>{{ count }}</h4>
+                        <p class="mb-0">
+                            <strong>Case {{ case_num }}</strong><br>
+                            <small>{{ cases[case_num].desc }}</small>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

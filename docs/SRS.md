@@ -381,7 +381,7 @@ const model = getGenerativeModel(ai, {
 
 ## 5. Product Functions (제품 기능)
 
-### 5.1 Student Functions (학생 기능) - 8 Features
+### 5.1 Student Functions (학생 기능) - 9 Features
 
 #### SF-01: Era Selection (시대 선택)
 
@@ -549,9 +549,63 @@ function buildFullPrompt(userPrompt: string, era: Era, eraPrefix: string) {
 - Reference URLs (museum links)
 - Read status tracking
 
+#### SF-09: Student Registration (학생 회원가입)
+
+| ID | SF-09 |
+|----|-------|
+| Name | Student Registration |
+| Description | Self-registration for students with pending approval workflow |
+| Priority | High |
+| Access | Public (unauthenticated users) |
+
+**Registration Process:**
+```
+1. Student navigates to /register page
+2. Student fills registration form:
+   - Email address (required, validated)
+   - Password (required, min 8 characters)
+   - Display name (required)
+   - School name (required)
+   - Grade (required, 1-3)
+   - Class (required)
+3. System validates input and checks for duplicate email
+4. Firebase Auth creates account (disabled by default)
+5. User document created in Firestore with status: 'pending'
+6. Success message: "가입 신청이 완료되었습니다. 선생님의 승인을 기다려 주세요."
+```
+
+**Registration Form Fields:**
+
+| Field | Type | Validation | Korean Label |
+|-------|------|------------|--------------|
+| `email` | string | Email format, unique | 이메일 |
+| `password` | string | Min 8 chars, 1 uppercase, 1 number | 비밀번호 |
+| `passwordConfirm` | string | Must match password | 비밀번호 확인 |
+| `displayName` | string | 2-20 chars, Korean/English | 이름 |
+| `school` | string | 2-50 chars | 학교 |
+| `grade` | number | 1, 2, or 3 | 학년 |
+| `class` | string | e.g., "1반" | 학급 |
+
+**Acceptance Criteria (Gherkin Format):**
+```gherkin
+Feature: Student Registration
+  Scenario: Successful registration with pending approval
+    Given the student is on the registration page
+    When the student fills in valid registration information
+    And clicks the "가입 신청" button
+    Then a new user account is created with status "pending"
+    And the student sees "가입 신청이 완료되었습니다. 선생님의 승인을 기다려 주세요."
+    And the student cannot login until approved
+
+  Scenario: Attempt login before approval
+    Given a student has registered but not yet approved
+    When the student attempts to login
+    Then the login fails with message "승인 대기 중입니다. 선생님의 승인을 기다려 주세요."
+```
+
 ---
 
-### 5.2 Teacher Functions (선생님 기능) - 7 Features
+### 5.2 Teacher Functions (선생님 기능) - 8 Features
 
 #### TF-01: Negative Prompt Management (금지 키워드 관리)
 
@@ -701,6 +755,113 @@ interface Annotation {
 **Screen Switch UI:**
 ```
 Header: [Logo] [Title] [Theme] [👨‍🎓 Student | 👩‍🏫 Admin] [Profile]
+```
+
+#### TF-08: Registration Approval (가입 승인 관리)
+
+| ID | TF-08 |
+|----|-------|
+| Name | Registration Approval |
+| Description | Review and approve/reject student registration requests with email notification |
+| Priority | High |
+| Access | Admin only |
+
+**Approval Dashboard UI:**
+```
+/admin/registrations
+┌─────────────────────────────────────────────────────────────┐
+│ 가입 승인 관리                                    [새로고침] │
+├─────────────────────────────────────────────────────────────┤
+│ ⏳ 대기 중: 5명  ✅ 승인됨: 42명  ❌ 거절됨: 3명             │
+├─────────────────────────────────────────────────────────────┤
+│ 📋 가입 대기 목록                                            │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ 홍길동 | student@school.edu | 서울중학교 2학년 3반     │ │
+│ │ 가입 신청: 2025-01-15 09:30                             │ │
+│ │ [✅ 승인] [❌ 거절]                                     │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ 김철수 | student2@school.edu | 서울중학교 1학년 2반    │ │
+│ │ 가입 신청: 2025-01-15 10:15                             │ │
+│ │ [✅ 승인] [❌ 거절]                                     │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Approval Workflow:**
+```
+1. Teacher navigates to /admin/registrations
+2. System displays list of pending registrations
+3. For each registration, teacher can:
+   a. View student details (name, email, school, grade, class)
+   b. Click "승인" to approve
+   c. Click "거절" to reject (with optional reason)
+4. On Approval:
+   - User document status updated: 'pending' → 'approved'
+   - isActive set to true
+   - Approval email sent to student
+5. On Rejection:
+   - User document status updated: 'pending' → 'rejected'
+   - Rejection email sent to student with reason
+   - Account remains disabled
+```
+
+**Email Notification System:**
+
+| Event | Recipient | Subject | Content |
+|-------|-----------|---------|---------|
+| Approval | Student | [AI 문화유산] 가입이 승인되었습니다 | 가입 승인 안내, 로그인 링크 |
+| Rejection | Student | [AI 문화유산] 가입 신청 결과 안내 | 거절 사유, 재신청 안내 |
+
+**Email Service Integration:**
+```typescript
+// Firebase Cloud Functions + Nodemailer or SendGrid
+interface ApprovalEmailData {
+  to: string;           // Student email
+  studentName: string;  // Display name
+  approvedBy: string;   // Teacher name
+  loginUrl: string;     // Application login URL
+}
+
+// Triggered when user status changes to 'approved'
+exports.sendApprovalEmail = functions.firestore
+  .document('users/{userId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+
+    if (before.registrationStatus === 'pending' &&
+        after.registrationStatus === 'approved') {
+      await sendApprovalEmail(after.email, after.displayName);
+    }
+  });
+```
+
+**Acceptance Criteria (Gherkin Format):**
+```gherkin
+Feature: Registration Approval
+  Scenario: Teacher approves student registration
+    Given a student has submitted a registration request
+    And the teacher is on the registration approval page
+    When the teacher clicks "승인" for the student
+    Then the student's status is updated to "approved"
+    And the student's isActive is set to true
+    And an approval email is sent to the student
+    And the student can now login to the application
+
+  Scenario: Student receives approval email
+    Given a teacher has approved a student's registration
+    Then the student receives an email with subject "[AI 문화유산] 가입이 승인되었습니다"
+    And the email contains a link to login
+    And the email includes the teacher's name who approved
+
+  Scenario: Teacher rejects student registration
+    Given a student has submitted a registration request
+    And the teacher is on the registration approval page
+    When the teacher clicks "거절" and enters reason "학교 확인 불가"
+    Then the student's status is updated to "rejected"
+    And a rejection email is sent to the student with the reason
+    And the student cannot login to the application
 ```
 
 ---

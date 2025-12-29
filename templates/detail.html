@@ -1,0 +1,534 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ treasure.treasure_name }} - 국보 AI 이미지 생성{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">목록</a></li>
+                <li class="breadcrumb-item active">{{ treasure.treasure_name }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 기본 정보 -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>기본 정보</h5>
+            </div>
+            <div class="card-body">
+                <h4>{{ treasure.treasure_name }}</h4>
+                <table class="table table-sm">
+                    <tr><th width="30%">국보 번호</th><td>{{ treasure.treasure_id }}호</td></tr>
+                    <tr><th>시대</th><td><span class="badge bg-secondary">{{ treasure.era }}</span></td></tr>
+                    <tr><th>연대</th><td>{{ treasure.year or '-' }}</td></tr>
+                    <tr><th>유형</th><td>{{ treasure.type or '-' }}</td></tr>
+                    <tr><th>소재지</th><td>{{ treasure.location or '-' }}</td></tr>
+                    <tr><th>상태</th><td><span class="badge bg-success">{{ treasure.status }}</span></td></tr>
+                </table>
+
+                <div class="d-grid gap-2">
+                    <a href="/treasure/{{ treasure.doc_id }}/edit" class="btn btn-outline-primary">
+                        <i class="bi bi-pencil me-1"></i>프롬프트 수정
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 참조 이미지 -->
+        <div class="card mt-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-image me-2"></i>참조 이미지</h5>
+            </div>
+            <div class="card-body">
+                {% if treasure.reference_image %}
+                <img src="{{ treasure.reference_image.url }}" class="img-fluid rounded mb-3" alt="참조 이미지">
+                <p class="small text-muted">{{ treasure.reference_image.uploaded_at }}</p>
+                {% else %}
+                <p class="text-muted">등록된 참조 이미지가 없습니다.</p>
+                {% endif %}
+
+                <!-- 참조 이미지 업로드 -->
+                <div class="reference-upload-zone" id="referenceDropZone">
+                    <i class="bi bi-cloud-upload fs-1 text-muted"></i>
+                    <p class="mb-0">참조 이미지를 드래그하거나 클릭하여 업로드</p>
+                    <input type="file" id="referenceInput" class="d-none" accept="image/*">
+                </div>
+            </div>
+        </div>
+
+        <!-- 역사 조사 결과 -->
+        <div class="card mt-4">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-book me-2"></i>역사 조사 (Deep Research)</h5>
+            </div>
+            <div class="card-body">
+                {% if treasure.research %}
+                <h6>역사적 배경</h6>
+                <p class="small">{{ treasure.research.historical_background or '-' }}</p>
+
+                <h6>문화재적 가치</h6>
+                <p class="small">{{ treasure.research.cultural_value or '-' }}</p>
+
+                <h6>출처</h6>
+                <ul class="small">
+                    {% for source in treasure.research.sources or [] %}
+                    <li>{{ source.title }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">역사 조사 데이터가 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 프롬프트 및 이미지 -->
+    <div class="col-lg-8">
+        <!-- 프롬프트 탭 -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#imagePrompt">이미지 프롬프트</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#videoPrompt">영상 프롬프트</button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="imagePrompt">
+                        <h6>단순 프롬프트 (Case 0, 1)</h6>
+                        <div class="prompt-box mb-3" style="background-color: #fff3cd;">{% if treasure.prompts and treasure.prompts.base_prompt %}{{ treasure.prompts.base_prompt }}{% else %}{{ treasure.treasure_name }}의 {{ treasure.era }} 시대배경에 맞는 역사 이미지를 생성해주세요.{% endif %}</div>
+                        <h6>상세 프롬프트 (Case 2, 3)</h6>
+                        <div class="prompt-box mb-3">{{ treasure.prompts.detailed_prompt if treasure.prompts else '-' }}</div>
+                        <h6>네거티브 프롬프트</h6>
+                        <div class="prompt-box" style="background-color: #f8d7da; border-color: #f5c2c7;">{{ treasure.prompts.negative_prompt if treasure.prompts and treasure.prompts.negative_prompt else '-' }}</div>
+                    </div>
+                    <div class="tab-pane fade" id="videoPrompt">
+                        <h6>영상 생성 프롬프트</h6>
+                        <div class="prompt-box">{{ treasure.video_prompts.main_prompt if treasure.video_prompts else '-' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4가지 Case별 이미지 업로드 -->
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-images me-2"></i>Case별 생성 이미지</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for case_num, case_info in cases.items() %}
+                    <div class="col-md-3 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header case-{{ case_num }}" style="background-color: {% if case_num == 0 %}#fff3cd{% elif case_num == 1 %}#ffeeba{% elif case_num == 2 %}#d1e7dd{% else %}#cfe2ff{% endif %};">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <strong>Case {{ case_num }}</strong>
+                                    <button class="btn btn-sm btn-outline-dark py-0" onclick="showPromptModal({{ case_num }})">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                                <small>{{ case_info.desc }}</small>
+                            </div>
+                            <div class="card-body p-2">
+                                {% for i in range(1, 5) %}
+                                {% set img_key = 'case_' ~ case_num %}
+                                {% set trial_key = 'trial_' ~ i %}
+                                {% set img_data = treasure.images[img_key][trial_key] if treasure.images and treasure.images[img_key] and treasure.images[img_key][trial_key] else None %}
+                                <div class="border rounded p-2 mb-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <small class="fw-bold">Trial {{ i }}</small>
+                                        {% if img_data %}
+                                        {% set eval_status = img_data.evaluation.status if img_data.evaluation else 'pending_review' %}
+                                        {% set status_info = image_status_options | selectattr('value', 'equalto', eval_status) | first %}
+                                        <span class="badge bg-{{ status_info.color if status_info else 'secondary' }}">{{ status_info.label if status_info else '미평가' }}</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="text-center" style="min-height: 60px;">
+                                        {% if img_data %}
+                                        <img src="{{ img_data.url }}" class="img-fluid rounded cursor-pointer" style="max-height: 60px;" onclick="openImageDetail({{ case_num }}, {{ i }}, '{{ img_data.url }}')">
+                                        {% else %}
+                                        <div class="text-muted small d-flex align-items-center justify-content-center" style="height: 60px;">
+                                            <i class="bi bi-image text-muted"></i>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% if img_data %}
+                                    <div class="mt-1">
+                                        <button class="btn btn-outline-secondary btn-sm w-100 py-0" onclick="openStatusModal({{ case_num }}, {{ i }})">
+                                            <small><i class="bi bi-pencil"></i> 평가</small>
+                                        </button>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                                <button class="btn btn-primary btn-sm w-100" onclick="openUploadModal({{ case_num }})">
+                                    <i class="bi bi-upload me-1"></i>업로드
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 프롬프트 확인 모달 -->
+<div class="modal fade" id="promptModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Case <span id="modalCaseNum"></span> 프롬프트</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="promptModalContent"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-primary" onclick="copyPrompt()">
+                    <i class="bi bi-clipboard me-1"></i>복사
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 이미지 업로드 모달 -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Case <span id="uploadCaseNum"></span> 이미지 업로드</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <input type="hidden" id="uploadCase" name="case">
+                    <div class="mb-3">
+                        <label class="form-label">Trial 번호</label>
+                        <select name="trial" class="form-select">
+                            <option value="1">Trial 1</option>
+                            <option value="2">Trial 2</option>
+                            <option value="3">Trial 3</option>
+                            <option value="4">Trial 4</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">미디어 유형</label>
+                        <select name="media_type" class="form-select">
+                            <option value="image">이미지</option>
+                            <option value="video">영상</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">파일 선택</label>
+                        <input type="file" name="file" class="form-control" accept="image/*,video/*" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="submitUpload()">
+                    <i class="bi bi-upload me-1"></i>업로드
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 이미지 상태 평가 모달 -->
+<div class="modal fade" id="statusModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">이미지 평가 - Case <span id="statusCaseNum"></span> Trial <span id="statusTrialNum"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="statusCase">
+                <input type="hidden" id="statusTrial">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">평가 상태</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for opt in image_status_options %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="imageStatus" id="status_{{ opt.value }}" value="{{ opt.value }}" onchange="toggleErrorTypes()">
+                            <label class="form-check-label badge bg-{{ opt.color }}" for="status_{{ opt.value }}">{{ opt.label }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- 역사고증오류 유형 선택 (역사고증오류 선택 시에만 표시) -->
+                <div class="mb-3" id="errorTypesSection" style="display: none;">
+                    <label class="form-label fw-bold">고증오류 유형 (복수 선택 가능)</label>
+                    <div class="row">
+                        {% for err in historical_error_types %}
+                        <div class="col-md-6 mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="errorType" id="error_{{ err.value }}" value="{{ err.value }}">
+                                <label class="form-check-label" for="error_{{ err.value }}">
+                                    <strong>{{ err.label }}</strong>
+                                    <br><small class="text-muted">{{ err.desc }}</small>
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">상세 설명 (선택사항)</label>
+                    <textarea id="statusNote" class="form-control" rows="3" placeholder="구체적인 오류 내용이나 개선 사항을 기록하세요..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="submitStatus()">
+                    <i class="bi bi-check-lg me-1"></i>저장
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 이미지 상세 보기 모달 -->
+<div class="modal fade" id="imageDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Case <span id="detailCaseNum"></span> Trial <span id="detailTrialNum"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="detailImage" src="" class="img-fluid rounded" style="max-height: 70vh;">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const docId = '{{ treasure.doc_id }}';
+let currentPromptData = null;
+
+// 프롬프트 모달 열기
+async function showPromptModal(caseNum) {
+    const response = await fetch(`/api/prompts/${docId}/${caseNum}`);
+    const data = await response.json();
+    currentPromptData = data;
+
+    document.getElementById('modalCaseNum').textContent = caseNum;
+
+    let html = `
+        <div class="alert alert-info">
+            <strong>${data.case_info.desc}</strong><br>
+            <small>참조 이미지: ${data.case_info.reference ? '필요' : '불필요'}</small>
+        </div>
+        <h6>프롬프트</h6>
+        <div class="prompt-box mb-3">${data.prompt || '(없음)'}</div>
+        <h6>네거티브 프롬프트</h6>
+        <div class="prompt-box mb-3" style="background-color: #f8d7da; border-color: #f5c2c7;">${data.negative_prompt || '(없음)'}</div>
+    `;
+
+    if (data.reference_required) {
+        html += `<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>이 Case는 참조 이미지가 필요합니다.</div>`;
+    }
+
+    document.getElementById('promptModalContent').innerHTML = html;
+    new bootstrap.Modal(document.getElementById('promptModal')).show();
+}
+
+// 프롬프트 복사
+function copyPrompt() {
+    if (currentPromptData) {
+        navigator.clipboard.writeText(currentPromptData.prompt || '');
+        alert('프롬프트가 클립보드에 복사되었습니다.');
+    }
+}
+
+// 업로드 모달 열기
+function openUploadModal(caseNum) {
+    document.getElementById('uploadCaseNum').textContent = caseNum;
+    document.getElementById('uploadCase').value = caseNum;
+    new bootstrap.Modal(document.getElementById('uploadModal')).show();
+}
+
+// 업로드 제출
+async function submitUpload() {
+    const form = document.getElementById('uploadForm');
+    const formData = new FormData(form);
+
+    try {
+        const response = await fetch(`/api/treasure/${docId}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            alert('업로드 완료!');
+            location.reload();
+        } else {
+            alert('업로드 실패: ' + result.error);
+        }
+    } catch (e) {
+        alert('업로드 오류: ' + e.message);
+    }
+}
+
+// 참조 이미지 드래그앤드롭
+const dropZone = document.getElementById('referenceDropZone');
+const refInput = document.getElementById('referenceInput');
+
+dropZone.addEventListener('click', () => refInput.click());
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        await uploadReferenceImage(files[0]);
+    }
+});
+refInput.addEventListener('change', async (e) => {
+    if (e.target.files.length > 0) {
+        await uploadReferenceImage(e.target.files[0]);
+    }
+});
+
+async function uploadReferenceImage(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch(`/api/treasure/${docId}/reference`, {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            alert('참조 이미지 업로드 완료!');
+            location.reload();
+        } else {
+            alert('업로드 실패: ' + result.error);
+        }
+    } catch (e) {
+        alert('업로드 오류: ' + e.message);
+    }
+}
+
+// 이미지 상태 평가 모달 열기
+function openStatusModal(caseNum, trialNum) {
+    document.getElementById('statusCaseNum').textContent = caseNum;
+    document.getElementById('statusTrialNum').textContent = trialNum;
+    document.getElementById('statusCase').value = caseNum;
+    document.getElementById('statusTrial').value = trialNum;
+    document.getElementById('statusNote').value = '';
+
+    // 라디오 버튼 초기화
+    document.querySelectorAll('input[name="imageStatus"]').forEach(r => r.checked = false);
+
+    // 체크박스 초기화
+    document.querySelectorAll('input[name="errorType"]').forEach(c => c.checked = false);
+
+    // 오류 유형 섹션 숨기기
+    document.getElementById('errorTypesSection').style.display = 'none';
+
+    new bootstrap.Modal(document.getElementById('statusModal')).show();
+}
+
+// 역사고증오류 선택 시 오류 유형 섹션 표시/숨김
+function toggleErrorTypes() {
+    const statusRadio = document.querySelector('input[name="imageStatus"]:checked');
+    const errorTypesSection = document.getElementById('errorTypesSection');
+
+    if (statusRadio && statusRadio.value === 'historical_error') {
+        errorTypesSection.style.display = 'block';
+    } else {
+        errorTypesSection.style.display = 'none';
+        // 다른 상태 선택 시 체크박스 초기화
+        document.querySelectorAll('input[name="errorType"]').forEach(c => c.checked = false);
+    }
+}
+
+// 이미지 상태 저장
+async function submitStatus() {
+    const caseNum = parseInt(document.getElementById('statusCase').value);
+    const trialNum = parseInt(document.getElementById('statusTrial').value);
+    const statusRadio = document.querySelector('input[name="imageStatus"]:checked');
+    const note = document.getElementById('statusNote').value;
+
+    if (!statusRadio) {
+        alert('평가 상태를 선택해주세요.');
+        return;
+    }
+
+    // 역사고증오류인 경우 오류 유형 수집
+    let errorTypes = [];
+    if (statusRadio.value === 'historical_error') {
+        document.querySelectorAll('input[name="errorType"]:checked').forEach(c => {
+            errorTypes.push(c.value);
+        });
+
+        if (errorTypes.length === 0) {
+            alert('고증오류 유형을 최소 1개 이상 선택해주세요.');
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`/api/treasure/${docId}/image-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                case: caseNum,
+                trial: trialNum,
+                status: statusRadio.value,
+                note: note,
+                error_types: errorTypes
+            })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            alert('평가가 저장되었습니다!');
+            location.reload();
+        } else {
+            alert('저장 실패: ' + result.error);
+        }
+    } catch (e) {
+        alert('오류: ' + e.message);
+    }
+}
+
+// 이미지 상세 보기 모달 열기
+function openImageDetail(caseNum, trialNum, imageUrl) {
+    document.getElementById('detailCaseNum').textContent = caseNum;
+    document.getElementById('detailTrialNum').textContent = trialNum;
+    document.getElementById('detailImage').src = imageUrl;
+    new bootstrap.Modal(document.getElementById('imageDetailModal')).show();
+}
+</script>
+{% endblock %}

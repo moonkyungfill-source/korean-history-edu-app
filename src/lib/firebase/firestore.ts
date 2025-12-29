@@ -27,6 +27,7 @@ import {
   ReportStatus,
   SearchHistory,
   ApiKeyConfig,
+  RegistrationStatus,
 } from '@/types';
 
 // ============ Generations ============
@@ -332,6 +333,84 @@ export async function updateUserActiveStatus(
 ): Promise<void> {
   const docRef = doc(db, 'users', userId);
   await updateDoc(docRef, { isActive });
+}
+
+/**
+ * 승인 대기 중인 사용자 조회
+ */
+export async function getPendingRegistrations(): Promise<User[]> {
+  const q = query(
+    collection(db, 'users'),
+    where('registrationStatus', '==', 'pending'),
+    orderBy('createdAt', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => ({
+    ...doc.data(),
+  })) as User[];
+}
+
+/**
+ * 가입 승인 상태별 사용자 수 조회
+ */
+export async function getRegistrationStats(): Promise<{
+  pending: number;
+  approved: number;
+  rejected: number;
+}> {
+  const snapshot = await getDocs(collection(db, 'users'));
+  const users = snapshot.docs.map((doc) => doc.data() as User);
+
+  return {
+    pending: users.filter((u) => u.registrationStatus === 'pending').length,
+    approved: users.filter((u) => u.registrationStatus === 'approved').length,
+    rejected: users.filter((u) => u.registrationStatus === 'rejected').length,
+  };
+}
+
+/**
+ * 학생 가입 승인
+ */
+export async function approveRegistration(
+  userId: string,
+  approvedBy: string
+): Promise<void> {
+  const docRef = doc(db, 'users', userId);
+  await updateDoc(docRef, {
+    registrationStatus: 'approved',
+    isActive: true,
+    approvedAt: serverTimestamp(),
+    approvedBy: approvedBy,
+  });
+}
+
+/**
+ * 학생 가입 거절
+ */
+export async function rejectRegistration(
+  userId: string,
+  reason?: string
+): Promise<void> {
+  const docRef = doc(db, 'users', userId);
+  await updateDoc(docRef, {
+    registrationStatus: 'rejected',
+    isActive: false,
+    rejectionReason: reason || '승인이 거절되었습니다.',
+  });
+}
+
+/**
+ * 사용자 등록 상태 조회
+ */
+export async function getUserRegistrationStatus(
+  userId: string
+): Promise<RegistrationStatus | null> {
+  const docRef = doc(db, 'users', userId);
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    return docSnap.data().registrationStatus || null;
+  }
+  return null;
 }
 
 // ============ Statistics ============

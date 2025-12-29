@@ -6,6 +6,9 @@ export type Era = 'goryeo' | 'joseon-early' | 'joseon-mid' | 'joseon-late' | 'ja
 // 사용자 역할
 export type UserRole = 'student' | 'admin';
 
+// 가입 승인 상태
+export type RegistrationStatus = 'pending' | 'approved' | 'rejected';
+
 // 사용자 인터페이스
 export interface User {
   uid: string;
@@ -14,11 +17,16 @@ export interface User {
   photoURL?: string;
   role: UserRole;
   createdAt: Timestamp;
-  lastLoginAt: Timestamp;
+  lastLoginAt: Timestamp | null;
   isActive: boolean;
   school?: string;        // 소속 학교
   grade?: number;         // 학년 (1-3)
   class?: string;         // 학급 (예: "1반", "2반")
+  // 가입 승인 관련 필드
+  registrationStatus: RegistrationStatus;
+  approvedAt?: Timestamp;
+  approvedBy?: string;
+  rejectionReason?: string;
 }
 
 // 생성물 상태

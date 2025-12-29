@@ -11,10 +11,12 @@ import {
   BarChart3,
   Users,
   Settings,
+  UserPlus,
 } from 'lucide-react';
 
 const navigation = [
   { name: '대시보드', href: '/admin/dashboard', icon: LayoutDashboard },
+  { name: '가입 승인', href: '/admin/registrations', icon: UserPlus },
   { name: '네거티브 프롬프트', href: '/admin/prompts', icon: FileText },
   { name: '생성물 검수', href: '/admin/review', icon: CheckSquare },
   { name: '오류 보고', href: '/admin/reports', icon: AlertTriangle },

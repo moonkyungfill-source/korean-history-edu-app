@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block title %}국보 목록 - 국보 AI 이미지 생성{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-collection me-2"></i>국보 목록</h2>
+        <p class="text-muted">총 {{ total }}개 국보</p>
+    </div>
+</div>
+
+<!-- 필터 -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">시대</label>
+                <select name="era" class="form-select">
+                    <option value="">전체</option>
+                    {% for e in eras %}
+                    <option value="{{ e }}" {% if e == current_era %}selected{% endif %}>{{ e }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">유형</label>
+                <select name="type" class="form-select">
+                    <option value="">전체</option>
+                    {% for t in types %}
+                    <option value="{{ t }}" {% if t == current_type %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">검색</label>
+                <input type="text" name="search" class="form-control" placeholder="국보명 검색..." value="{{ search }}">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-search me-1"></i>검색
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Case 범례 -->
+<div class="card mb-4">
+    <div class="card-header bg-white">
+        <strong><i class="bi bi-info-circle me-2"></i>2가지 실험 Case</strong>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for num, case in cases.items() %}
+            <div class="col-md-6 mb-2">
+                <span class="badge case-{{ num }} case-badge me-2">Case {{ num }}</span>
+                <small>{{ case.desc }}</small>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- 국보 목록 -->
+<div class="row">
+    {% for treasure in treasures %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <span class="badge bg-secondary era-badge">{{ treasure.era }}</span>
+                    <span class="text-muted small">국보 {{ treasure.treasure_id }}호</span>
+                </div>
+                <h5 class="card-title">{{ treasure.treasure_name }}</h5>
+                <p class="card-text small text-muted">
+                    <i class="bi bi-geo-alt me-1"></i>{{ treasure.location or '위치 미상' }}<br>
+                    <i class="bi bi-tag me-1"></i>{{ treasure.type or '미분류' }}
+                </p>
+
+                <!-- 프롬프트 상태 -->
+                <div class="mb-2">
+                    {% if treasure.prompts and treasure.prompts.detailed_prompt %}
+                    <span class="badge bg-success"><i class="bi bi-check me-1"></i>이미지 프롬프트</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">이미지 프롬프트 없음</span>
+                    {% endif %}
+
+                    {% if treasure.video_prompts and treasure.video_prompts.main_prompt %}
+                    <span class="badge bg-info"><i class="bi bi-camera-video me-1"></i>영상</span>
+                    {% endif %}
+
+                    {% if treasure.reference_image %}
+                    <span class="badge bg-primary"><i class="bi bi-image me-1"></i>참조</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-footer bg-white border-top-0">
+                <a href="/treasure/{{ treasure.doc_id }}" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-eye me-1"></i>상세보기
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- 페이지네이션 -->
+{% set total_pages = (total / per_page) | round(0, 'ceil') | int %}
+{% if total_pages > 1 %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if page > 1 %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page - 1 }}&era={{ current_era }}&type={{ current_type }}&search={{ search }}">이전</a>
+        </li>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+        {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ p }}&era={{ current_era }}&type={{ current_type }}&search={{ search }}">{{ p }}</a>
+        </li>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% endfor %}
+
+        {% if page < total_pages %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page + 1 }}&era={{ current_era }}&type={{ current_type }}&search={{ search }}">다음</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
